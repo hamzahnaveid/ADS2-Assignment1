@@ -1,19 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define bool int
 #define true 1
 #define false (!true)
 
 #define MAX 5 //max size of showroom
-
-//Stucture template for one node
-struct LinearNode {
-    struct Car *car;
-	struct LinearNode *next;
-};
-
 
 //Function prototypes
 void addCar();  //add a car to the showroom
@@ -25,15 +19,13 @@ void viewMake(char *); //view all cars of a certain make in the showroom
 void viewColour(char *); //view all cars of a specific colour in the showroom
 void viewSpecificCar(char *); //view a specific car in the showroom
 void updateCar(); //update the details for a specific car in the showroom
-bool isEmpty(); //returns true if there are no cars in the showroom
+bool isEmpty(); //return true if there are no cars in the showroom
+bool isUnique(char *); //return true if there are no other cars in the showroom that have the given registration number
+bool verifyReg(char *); //return true if the given registratrion number follows the correct format 'yyDxnnnn'
 void displaySubMenu(); //display menu for options viewing cars in the showroom
 void displayMenu(); //display user menu
-
-
-//Global Variables
-struct LinearNode *front = NULL; //front of the list
-struct LinearNode *last = NULL; //end of the list
-int currentSize = 0; //how many cars are currently in the showroom
+void saveToFile(FILE *); //write all cars in the showroom to a binary file
+void readFromFile(FILE *); //import all cars stored in a binary file into the showroom
 
 
 //Structure template for a car
@@ -46,15 +38,33 @@ struct Car {
     float reserveAmt; //deposit paid if car is reserved
 };
 
+
+//Stucture template for one node
+struct LinearNode {
+    struct Car car;
+	struct LinearNode *next;
+};
+
+
+//Global Variables
+FILE *fp; //file pointer
+struct LinearNode *front = NULL; //front of the list
+struct LinearNode *last = NULL; //end of the list
+int currentSize = 0; //how many cars are currently in the showroom
+
 void main() {
     int input;
     char regInput[8];
     char viewInput[20];
     bool exit = false;
 
+    //import cars from file if it exists
+    if ((fp = fopen("car.dat", "r+b")) != NULL) {
+        readFromFile(fp);
+    }
+
     do {
         displayMenu();
-        printf("\nPlease select a menu option corresponding to its number (1-7)\n");
         scanf("%d", &input);
         switch (input) {
         case 1 :
@@ -116,79 +126,65 @@ void main() {
             updateCar(regInput);
             break;
         case 7 :
+            system("cls");
             exit = true;
+            if (currentSize >= 0) {
+                saveToFile(fp);
+            }
+            printf("Goodbye!");
             break;
         }//end switch-case
     }while (!exit);
-}
+}//end main
 
 void addCar() {
     struct LinearNode *aNode;
-    struct LinearNode *current;
-	struct Car *aCar;
-	bool found;
+	struct Car aCar;
 
     //no more than 5 cars to be added into the showroom
 	if (currentSize == MAX) {
-        printf("Error - Showroom has reached maximum capacity. No space for the new car\n");
+        printf("ERROR - Showroom has reached maximum capacity. No space for the new car\n");
         return;
 	}
 
     printf("Entering new car into the showroom...\n");
 
-    //create space in memotry for a Car struct
-    aCar = (struct Car *)malloc(sizeof(struct Car));
-
     do {
-    printf("Enter the registration number : \n");
-    scanf("%s", aCar->reg);
+    printf("Enter the registration number in the format 'yyDxnnnn' (Example : 15D21234) : \n");
+    scanf("%s", aCar.reg);
     fflush(stdin);
-    //TO-DO: Error-checking code here
-    found = false;
-    current = front;
-
-    //search showroom for a car that already exists with the registration number given by the user
-    while (!found && current != NULL) {
-        if (strcmp(aCar->reg, current->car->reg) == 0) {;
-            found = true;
-            printf("\nError - The car with this registration already exists in the showroom! Registration number must be unique.\n");
-        }
-        else {
-            current = current->next;
-        }//end else
-    }//end while
-    }while (strlen(aCar->reg) < 8 || strlen(aCar->reg) > 8 || found == 1);//end do-while
+    }while (isUnique(aCar.reg) == false || verifyReg(aCar.reg) == false);//end do-while
 
     printf("Enter the make and model : \n");
-    gets(aCar->make);
+    gets(aCar.make);
     fflush(stdin);
 
     printf("Enter the colour : \n");
-    gets(aCar->colour);
+    gets(aCar.colour);
     fflush(stdin);
 
     do {
     printf("Enter the number of previous owners (0 if this is a brand new car) : \n");
-    scanf("%d", &(aCar->prevOwners));
-    if (aCar->prevOwners < 0 || aCar->prevOwners > 3) {
-        printf("\nError - Invalid input. No more than 3 previous owners are allowed for a car to be listed in the showroom\n");
+    scanf("%d", &(aCar.prevOwners));
+    if (aCar.prevOwners < 0 || aCar.prevOwners > 3) {
+        printf("\nERROR - Invalid input. No more than 3 previous owners are allowed for a car to be listed in the showroom\n");
     }
-    }while (aCar->prevOwners < 0 || aCar->prevOwners > 3);//end do-while
+    }while (aCar.prevOwners < 0 || aCar.prevOwners > 3);//end do-while
 
     printf("Enter '1' if this car is reserved OR '0' if this car is not reserved : \n");
-    scanf("%d", &(aCar->reserved));
-    if (aCar->reserved == 1) {
+    scanf("%d", &(aCar.reserved));
+    if (aCar.reserved == 1) {
         printf("Enter the reserve amount for this car : \n");
-        scanf("%f", &(aCar->reserveAmt));
+        scanf("%f", &(aCar.reserveAmt));
     }
     else {
-        aCar->reserveAmt = 0;
+        aCar.reserveAmt = 0;
     }//end else
 
     //create space in memory for a LinearNode struct
     aNode = (struct LinearNode *)malloc(sizeof(struct LinearNode));
 
-    // add data part to the node
+    //add data part to the node
     aNode->next = NULL;
     aNode->car = aCar;
     currentSize++; //keeps track of number of cars in showroom
@@ -213,7 +209,7 @@ void sellCar(char *regNum) {
 	bool found = false;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
@@ -222,7 +218,7 @@ void sellCar(char *regNum) {
 
     //searching for a reserved car in the showroom with given registration number
     while (!found && current != NULL) {
-        if (strcmp(regNum, current->car->reg) == 0 && current->car->reserved == true)
+        if (strcmp(regNum, current->car.reg) == 0 && current->car.reserved == true)
             found = true;
         else {
             previous = current;
@@ -231,7 +227,7 @@ void sellCar(char *regNum) {
     }//end while
 
     if (!found) {
-        printf("\nError - there is no such car in the showroom with the registration number %s that is reserved\n", regNum);
+        printf("\nERROR - there is no such car in the showroom with the registration number %s that is reserved\n", regNum);
         return;
     }
 
@@ -252,6 +248,10 @@ void sellCar(char *regNum) {
 
     currentSize--;
     printf("\nCar with registration number %s has been successfully sold\n", regNum);
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end sellCar
 
 void carReserve(char *regNum) {
@@ -260,7 +260,7 @@ void carReserve(char *regNum) {
     bool found = false;
 
     if (isEmpty()) {
-        printf("\nError - there are no cars in the showroom\n");
+        printf("\nERROR - there are no cars in the showroom\n");
         return;
     }
 
@@ -269,8 +269,8 @@ void carReserve(char *regNum) {
 
     //searching for car in the showroom with given registration number
     while (!found && current != NULL) {
-        if (strcmp(regNum, current->car->reg) == 0) {
-            aCar = current->car;
+        if (strcmp(regNum, current->car.reg) == 0) {
+            aCar = &(current->car);
             printf("Car found!\n");
             found = true;
         }
@@ -280,7 +280,7 @@ void carReserve(char *regNum) {
     }//end while
 
     if (!found) {
-        printf("\nError - there is no such car in the showroom with the registration number %s\n", regNum);
+        printf("\nERROR - there is no such car in the showroom with the registration number %s\n", regNum);
         return;
     }
 
@@ -306,26 +306,31 @@ void carReserve(char *regNum) {
     else {
         printf("Car with registration number %s is currently unreserved\n", aCar->reg);
     }//end else
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end carReserve
 
 void viewAllCars() {
     struct LinearNode *current;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
     printf("Displaying all cars currently in the showroom...\n");
     current = front;
     while (current != NULL) {
-        printf("\nCar registration number is %s\n", (current->car->reg));
-        printf("Car make is %s\n", current->car->make);
-        printf("Car colour is %s\n", current->car->colour);
-        printf("Number of previous owners for this car is %d\n", current->car->prevOwners);
+        //display current car's details
+        printf("\nCar registration number is %s\n", (current->car.reg));
+        printf("Car make is %s\n", current->car.make);
+        printf("Car colour is %s\n", current->car.colour);
+        printf("Number of previous owners for this car is %d\n", current->car.prevOwners);
         //check current car's reserve status
-        if (current->car->reserved == true) {
-            printf("This car is reserved and it's reserve amount is €%.2f\n", current->car->reserveAmt);
+        if (current->car.reserved == true) {
+            printf("This car is reserved and it's reserve amount is €%.2f\n", current->car.reserveAmt);
         }
         else {
             printf("This car is not reserved\n");
@@ -333,49 +338,61 @@ void viewAllCars() {
         //move on to next car in the showroom
         current = current->next;
     }//end while
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end viewAllCars
 
 void viewUnreserved() {
     struct LinearNode *current;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
     printf("Displaying all unreserved cars currently in the showroom...\n");
     current = front;
     while (current != NULL) {
-        if (current->car->reserved == false) {
-        printf("\nCar registration number is %s\n", (current->car->reg));
-        printf("Car make is %s\n", current->car->make);
-        printf("Car colour is %s\n", current->car->colour);
-        printf("Number of previous owners for this car is %d\n", current->car->prevOwners);
+        //search for cars in the showroom that are unreserved
+        if (current->car.reserved == false) {
+        //display unreserved car's details
+        printf("\nCar registration number is %s\n", (current->car.reg));
+        printf("Car make is %s\n", current->car.make);
+        printf("Car colour is %s\n", current->car.colour);
+        printf("Number of previous owners for this car is %d\n", current->car.prevOwners);
         }
         //move on to next car in the showroom
         current = current->next;
     }//end while
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end viewUnreserved
 
 void viewMake(char *carMake) {
     struct LinearNode *current;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
     printf("Displaying all cars of the make %s currently in the showroom...\n", carMake);
     current = front;
     while (current != NULL) {
-        if (strcmp(carMake, current->car->make) == 0) {
-        printf("\nCar registration number is %s\n", (current->car->reg));
-        printf("Car make is %s\n", current->car->make);
-        printf("Car colour is %s\n", current->car->colour);
-        printf("Number of previous owners for this car is %d\n", current->car->prevOwners);
+        //search for cars in the showroom with the given make
+        if (strcmp(carMake, current->car.make) == 0) {
+        //display details of a car with the given make
+        printf("\nCar registration number is %s\n", (current->car.reg));
+        printf("Car make is %s\n", current->car.make);
+        printf("Car colour is %s\n", current->car.colour);
+        printf("Number of previous owners for this car is %d\n", current->car.prevOwners);
             //check current car's reserve status
-            if (current->car->reserved == true) {
-                printf("This car is reserved and it's reserve amount is €%.2f\n", current->car->reserveAmt);
+            if (current->car.reserved == true) {
+                printf("This car is reserved and it's reserve amount is €%.2f\n", current->car.reserveAmt);
             }
             else {
                 printf("This car is not reserved\n");
@@ -384,27 +401,33 @@ void viewMake(char *carMake) {
         //move on to next car in the showroom
         current = current->next;
     }//end while
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end viewMake
 
 void viewColour(char *carColour) {
     struct LinearNode *current;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
     printf("Displaying all cars of the colour %s currently in the showroom...\n", carColour);
     current = front;
     while (current != NULL) {
-        if (strcmp(carColour, current->car->colour) == 0) {
-        printf("\nCar registration number is %s\n", (current->car->reg));
-        printf("Car make is %s\n", current->car->make);
-        printf("Car colour is %s\n", current->car->colour);
-        printf("Number of previous owners for this car is %d\n", current->car->prevOwners);
+        //search for cars in the showroom with the given colour
+        if (strcmp(carColour, current->car.colour) == 0) {
+        //display details of a car with the given colour
+        printf("\nCar registration number is %s\n", (current->car.reg));
+        printf("Car make is %s\n", current->car.make);
+        printf("Car colour is %s\n", current->car.colour);
+        printf("Number of previous owners for this car is %d\n", current->car.prevOwners);
         //check current car's reserve status
-            if (current->car->reserved == true) {
-                printf("This car is reserved and it's reserve amount is €%.2f\n", current->car->reserveAmt);
+            if (current->car.reserved == true) {
+                printf("This car is reserved and it's reserve amount is €%.2f\n", current->car.reserveAmt);
             }
             else {
                 printf("This car is not reserved\n");
@@ -413,15 +436,19 @@ void viewColour(char *carColour) {
         //move on to next car in the showroom
         current = current->next;
     }//end while
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end viewColour
 
 void viewSpecificCar(char *regNum) {
     struct LinearNode *current;
-    struct Car *aCar;
+    struct Car aCar;
 	bool found = false;
 
 	if (isEmpty()) {
-        printf("\nError - there are no cars in the showroom\n");
+        printf("\nERROR - there are no cars in the showroom\n");
         return;
     }
 
@@ -430,7 +457,7 @@ void viewSpecificCar(char *regNum) {
 
     //searching for car in the showroom with given registration number
     while (!found && current != NULL) {
-        if (strcmp(regNum, current->car->reg) == 0) {
+        if (strcmp(regNum, current->car.reg) == 0) {
             aCar = current->car;
             printf("Car found!\n");
             found = true;
@@ -441,22 +468,26 @@ void viewSpecificCar(char *regNum) {
     }//end while
 
     if (!found) {
-        printf("\nError - there is no such car in the showroom with the registration number %s\n", regNum);
+        printf("\nERROR - there is no such car in the showroom with the registration number %s\n", regNum);
         return;
     }
 
     //print out the desired car's details
-    printf("\nCar registration number is %s\n", (aCar->reg));
-    printf("Car make is %s\n", aCar->make);
-    printf("Car colour is %s\n", aCar->colour);
-    printf("Number of previous owners for this car is %d\n", aCar->prevOwners);
+    printf("\nCar registration number is %s\n", (aCar.reg));
+    printf("Car make is %s\n", aCar.make);
+    printf("Car colour is %s\n", aCar.colour);
+    printf("Number of previous owners for this car is %d\n", aCar.prevOwners);
     //check current car's reserve status
-    if (aCar->reserved == true) {
-        printf("This car is reserved and it's reserve amount is €%.2f\n", aCar->reserveAmt);
+    if (aCar.reserved == true) {
+        printf("This car is reserved and it's reserve amount is €%.2f\n", aCar.reserveAmt);
     }
     else {
         printf("This car is not reserved\n");
     }//end else
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end viewSpecificCar
 
 void updateCar(char *regNum) {
@@ -465,7 +496,7 @@ void updateCar(char *regNum) {
      bool found;
 
 	if (isEmpty()) {
-		printf("\nError - there are no cars in the showroom\n");
+		printf("\nERROR - there are no cars in the showroom\n");
 		return;
 	}
 
@@ -474,8 +505,8 @@ void updateCar(char *regNum) {
 
     //searching for car in the showroom with the given registration number
     while (!found && current != NULL) {
-        if (strcmp(regNum, current->car->reg) == 0) {
-            aCar = current->car;
+        if (strcmp(regNum, current->car.reg) == 0) {
+            aCar = &(current->car);
             printf("Car found!\n");
             found = true;
         }
@@ -485,20 +516,23 @@ void updateCar(char *regNum) {
     }//end while
 
     if (!found) {
-        printf("\nError - there is no such car in the showroom with the registration number %s\n", regNum);
+        printf("\nERROR - there is no such car in the showroom with the registration number %s\n", regNum);
         return;
     }
 
+    //update make
     printf("This car's current make is %s. Enter the new make : \n", aCar->make);
     fflush(stdin);
     gets(aCar->make);
     fflush(stdin);
 
+    //update colour
     printf("This car's current colour is %s. Enter the new colour : \n", aCar->colour);
     fflush(stdin);
     gets(aCar->colour);
     fflush(stdin);
 
+    //update number of previous owners
     do {
     printf("This car has %d previous owners. Enter the new number of previous owners (0 if this is a brand new car) : \n", aCar->prevOwners);
     scanf("%d", &(aCar->prevOwners));
@@ -507,12 +541,18 @@ void updateCar(char *regNum) {
     }
     }while (aCar->prevOwners < 0 || aCar->prevOwners > 3);//end do-while
 
+    //if car is reserved, update reserve amount
     if (aCar->reserved == true) {
         do {
         printf("This car currently has a reserve amount of €%.2f. Enter the new reserve amount (must be between €500.00 and €1500.00) : \n", aCar->reserveAmt);
         scanf("%f", &aCar->reserveAmt);
         }while (!(aCar->reserveAmt >= 500.00 && aCar->reserveAmt <= 1500.00));//end do-while
     }
+    printf("\nThe details for the car with registration number %s have been successfully updated\n", regNum);
+    printf("\nPress the ENTER key to return to the main menu\n");
+    getchar();
+    getchar();
+    system("cls");
 }//end updateCar
 
 bool isEmpty() {
@@ -521,6 +561,64 @@ bool isEmpty() {
 	else
 		return false;
 }//end isEmpty
+
+bool isUnique(char *regNum) {
+    struct LinearNode *current = front;
+
+    //search showroom for a car that already exists with the registration number given by the user
+    while (current != NULL) {
+        if (strcmp(regNum, current->car.reg) == 0) {;
+            //car with the given registration number found
+            printf("\nERROR - The car with this registration already exists in the showroom! Registration number must be unique.\n");
+            return false;
+        }
+        else {
+            current = current->next;
+        }//end else
+    }//end while
+    return true;
+}
+
+bool verifyReg(char *regNum) {
+    bool valid = true;
+
+    //check if registration number is exactly 8 characters long
+    if (strlen(regNum) < 8 || strlen(regNum) > 8) {
+        valid = false;
+    }
+
+    //check if registration number has the correct year format
+    if (regNum[0] != '1' && regNum[0] != '2') {
+        valid = false;
+    }
+
+    //check if registration number has the correct year format
+    if ((regNum[0] == '1' && (int)regNum[1] < 4) && (regNum[0] == '2' && (int)regNum[1] > 4)) {
+        valid = false;
+    }
+
+    //check if registration number contains 'D' as the third character
+    if (regNum[2] != 'D') {
+        valid = false;
+    }
+
+    //check if registration number contains either '1' or '2' to indicate which half of the year it was registered
+    if (regNum[3] != '1' && regNum[3] != '2') {
+        valid = false;
+    }
+
+    //check if remaining characters in registration number are all digits
+    for (int i = 4; i < 8; i++) {
+        if (!isdigit(regNum[i])) {
+            valid = false;
+        }
+    }//end for
+
+    if (!valid) {
+        puts("\nERROR - Invalid registration number.");
+    }
+    return valid;
+}//end verifyReg
 
 void displaySubMenu() {
     puts("1.    View all cars in the showroom");
@@ -534,6 +632,7 @@ void displayMenu() {
     if (currentSize == 0) {
         puts("\n***There are currently no cars in the showroom. Add a car to the showroom by selecting option 1***\n");
     }
+    printf("\nPlease select a menu option corresponding to its number (1-7)\n");
     puts("1.    Add a new car to the showroom");
     puts("2.    Sell a car from the showroom");
     puts("3.    Reserve/Unreserve a car in the showroom");
@@ -542,3 +641,44 @@ void displayMenu() {
     puts("6.    Update the details for a specific car in the showroom");
     puts("7.    Exit the system");
 }//end displayMenu
+
+void saveToFile(FILE *fp) {
+    struct LinearNode *current;
+    fp = fopen("car.dat", "w+b");
+
+    current = front;
+    while (current != NULL) {
+        fwrite(&(current->car), sizeof(struct Car), 1, fp);
+        current = current->next;
+    }//end while
+    printf("\nAll cars in the showroom have been successfully saved\n");
+    fclose(fp);
+}//end saveToFile
+
+void readFromFile(FILE *fp) {
+    struct Car aCar;
+    struct LinearNode *aNode;
+
+    printf("File with cars found! Importing cars from file into showroom...\n");
+    while ((fread(&aCar, sizeof(struct Car), 1, fp)) != NULL) {
+        //create space in memory for a LinearNode struct
+        aNode = (struct LinearNode *)malloc(sizeof(struct LinearNode));
+
+        //add data part to the node
+        aNode->next = NULL;
+        aNode->car = aCar;
+        currentSize++; //keeps track of number of cars in showroom
+
+        //add node to front of the list
+        if (isEmpty()) {
+            front = aNode;
+            last = aNode;
+        }
+        else {
+            last->next = aNode;
+            last = aNode;
+        }//end else
+    }//end while
+    printf("\nImported all cars from the file into the showroom successfully\n");
+    fclose(fp);
+}//end readFromFile
